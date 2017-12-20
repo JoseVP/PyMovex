@@ -7,10 +7,18 @@ def connect(*args, **kwargs):
     return _pymovex.connect(*args, **kwargs)
 
 def fquery(cmd, fieldMap, outputFields=()):
-    return _pymovex.fquery(cmd, fieldMap, outputFields)
+    try:
+        return _pymovex.fquery(cmd, fieldMap, outputFields)
+    except:
+        print "Exception"
+        raise
 
 def fquery_single(cmd, fieldMap, outputFields=()):
-    return _pymovex.fquery_single(cmd, fieldMap, outputFields)
+    try:
+        return _pymovex.fquery_single(cmd, fieldMap, outputFields)
+    except:
+        print "Exception"
+        raise
 
 def close(*args, **kwargs):
     return _pymovex.close(*args, **kwargs)

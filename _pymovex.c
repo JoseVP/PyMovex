@@ -26,11 +26,11 @@ static SERVER_ID comStruct;
 static unsigned long result;
 static unsigned long len;
 static PyObject *PyMovexError;
-static char errstr[1024];
+static char errstr[2048];
 static PyObject*OrderedDict;
 static int DEBUG = 0;
 
-PyObject*reportError(char*method, unsigned long result) {
+PyObject * reportError(char*method, unsigned long result) {
     PyObject* unicodeError;
 
     snprintf(errstr, sizeof(errstr), "%s returned error %lu: %s", method, result, comStruct.Buff);
@@ -298,8 +298,13 @@ static PyObject * pymovex_fquery_single(PyObject*self, PyObject*args) {
     if (! pymovex_set_fields(fieldMap))
         return NULL;
 
-    if ((result=MvxSockAccess(&comStruct, cmd)))
-        return reportError("MvxSockAccess", result);
+    if ((result=MvxSockAccess(&comStruct, cmd))){
+        if (DEBUG)
+            fprintf(stderr, "Resultado: %ld\n", result);
+
+        return NULL;
+//        return reportError("MvxSockAccess", result);
+    }
 
     return pymovex_next_result(outputFields);
 }

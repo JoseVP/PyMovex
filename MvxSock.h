@@ -35,8 +35,12 @@ extern "C" {
 #endif
 
 #ifdef WIN32
-   #ifndef NOMVXSOCKLIB
+  #ifndef NOMVXSOCKLIB
+     #ifdef _AMD64_
+      #pragma comment(lib, "MvxSockx64.lib")
+     #else
       #pragma comment(lib, "MvxSock.lib")
+     #endif
    #endif
 #else
 #define CALLBACK
@@ -50,6 +54,9 @@ extern "C" {
 #define F_WIN            0x0008 /* Server is a Windows machine */
 #define F_NOIOCTL        0x0010
 #define F_ZIPPED         0x0020 /* Only valid under WIN32 */
+#define F_IPV6           0x0040
+#define F_DUMPTRT        0x0080 /* Dump transaction roundtrip times */
+#define F_NOPOOL         0x0100 /* Not to use pooling. ONLY INTERNAL USE */
 
 #ifdef WIN32
    /**
@@ -60,15 +67,28 @@ extern "C" {
     */
    #pragma pack(push, MvxAPI, 1)
 #endif
+#ifdef _WIN64
+typedef SOCKET MvxSocket;
+#else
 typedef unsigned int MvxSocket;
+#endif
 typedef unsigned short wchar_u; /* UCS-2 character definition to ensure two-bytes in all environments */
 
-typedef struct _B_FIELD { /* size 344 */
+/* Old pre 6.5
+typedef struct _B_FIELD { // size 344
 	char name[8];
 	char data[328];
 	struct _B_FIELD *next;
 	char reserved[4];
 	} B_FIELD;
+*/
+typedef struct _B_FIELD { /* size 1984 */
+	char name[8];
+	char data[1972];
+	struct _B_FIELD *next;
+	} B_FIELD;
+
+
 
 typedef struct _FLDMAP { /* size 32 */
    char    szName[16];
@@ -81,7 +101,8 @@ typedef struct _SERVER_ID { /* size 440, in AS400 560 */
             char      ServerName[32];
             unsigned short ServerPortNr;
             unsigned short usFlags;
-            char      ApplicationName[17];
+            char      ApplicationName[14];
+            char      ErrCode[3];
             char      MessageID[8];
             char      BadField[7];
             char      Buff[256];
@@ -100,14 +121,17 @@ typedef struct _SERVER_ID { /* size 440, in AS400 560 */
 #if defined(__SUN__) || defined(__AIX__) || defined(__LINUX__)
             iconv_t   toAnsi;    /* In Sun we need to use iconv for Ansi/UCS2 conversion */
             iconv_t   toUCS2;
-            char reserved[7];          /* 7 bytes - For future use */
+            wchar_u   *wBuff;
+            char reserved[3];          /* 3 bytes - For future use */
 #elif defined(__AS400__)
             iconv_t   *toEbcdic; /* In AS400 we need to use iconv for Ebcdic/UCS2 conversion */
             iconv_t   *toUCS2; /* In AS400 iconv_t is a struct so we use pointers (allocated space) */
-            char reserved[7];          /* 7 bytes - For future use */
+            wchar_u   *wBuff;
+            char reserved[3];          /* 3 bytes - For future use */
 #else
             unsigned char *zipb;
-            char reserved[11];       /* 11 bytes - For future use */
+            wchar_u   *wBuff;       /* Wide char version of message buffer */
+            char reserved[7];       /* 7 bytes - For future use */
 #endif
             } SERVER_ID, *PSERVER_ID;
 
@@ -301,10 +325,11 @@ void CALLBACK MvxSockShowLastError( PSERVER_ID pstruct, char *ErrText);
  * Returns:  Pointer to buffer if not NULL.
  *           If buffer is NULL, a pointer to internal storage is returned.
  *
- * Remark: Always returns text in ANSI/ASCII format.
+ * Remark: The buffersize is given in bytes.
  *
  */
 char * CALLBACK MvxSockGetLastError( PSERVER_ID pstruct, char *buffer, int buffsize);
+wchar_u * CALLBACK MvxSockGetLastErrorW( PSERVER_ID pstruct, wchar_u *buffer, int buffsize);
 
 /**
  * Description: Retrieve message ID from the last NOK error.
@@ -338,12 +363,24 @@ char * CALLBACK MvxSockGetLastMessageID( PSERVER_ID pstruct, char *buffer, int b
 char * CALLBACK MvxSockGetLastBadField( PSERVER_ID pstruct, char *buffer, int buffsize);
 
 /**
+ * Description: Retrieve latest error code (pos 14, 15)
+ *
+ * Argument: struct pointer
+ *           Pointer to buffer or NULL.
+ *           Size of the buffer in where to store text.
+ *
+ * Returns:  Pointer to buffer if not NULL.
+ *           If buffer is NULL, a pointer to internal storage is returned.
+ *
+ * Remark: Always returns text in ANSI/ASCII format.
+ *
+ */
+char * CALLBACK MvxSockGetLastErrorCode( PSERVER_ID pstruct, char *buffer, int buffsize);
+
+/**
  * Close the conversation
  */
 unsigned long CALLBACK MvxSockClose( PSERVER_ID pstruct);
-
-/* This one is not really supported. */
-unsigned long CALLBACK MvxSockChgPwd( PSERVER_ID pstruct, char *user, char *oldpwd, char *newpwd);
 
 /**
  * Description: Function to build and execute a transaction built up from field
@@ -510,9 +547,21 @@ unsigned long CALLBACK MvxSockGetBlob( PSERVER_ID pstruct, unsigned char *pByte,
  * Remark:
  *
  */
-#ifdef WIN32
+#ifdef __WIN__
    unsigned long CALLBACK MvxSockSetZippedTransactions( PSERVER_ID pstruct, int mode);
 #endif
+
+/**
+ * Description: If field data returned from MvxSockGetField() shall be trimmed from triling spaces.
+ *
+ * Argument: Pointer to struct, boolean, TRUE = ON, FALSE = OFF.
+ *
+ * Returns: nothing
+ *
+ * Remark: By default, trailing spaces are removed.
+ *
+ */
+void CALLBACK MvxSockSetTrimFields( PSERVER_ID pstruct, int trim);
 
 #ifdef __cplusplus
 }
