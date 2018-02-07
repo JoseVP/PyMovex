@@ -77,19 +77,70 @@ pymovex_connect(PyObject *self, PyObject *args, PyObject*kwargs)
     return Py_None;
 }
 
-static PyObject * pymovex_query(PyObject*self, PyObject*args) {
+//static PyObject * pymovex_query(PyObject*self, PyObject*args) {
+//    char recvBuff[1000];
+//    char *sendBuff;
+//    int count;
+//
+//    if (! PyArg_ParseTuple(args, "s", &sendBuff))
+//        return NULL;
+//
+//    if (DEBUG)
+//        fprintf(stderr, "Query: |%s|\n", sendBuff);
+//
+//    len=sizeof(recvBuff);
+//    count=0;
+//
+//    if((result=MvxSockTrans(&comStruct, sendBuff, recvBuff, &len)))
+//        return reportError("MvxSockTrans", result);
+//
+//    if (DEBUG) {
+//        fprintf(stderr, "Sent %zu bytes: %s\n", strlen(sendBuff), sendBuff);
+//        fprintf(stderr, "Got %zu bytes: %s\n", strlen(recvBuff), recvBuff);
+//    }
+//
+//    while(strncmp(recvBuff, "REP  ", 5)==0 ){
+//        count++;
+//        len=1000;
+//        if((result=MvxSockReceive(&comStruct, recvBuff, &len)))
+//            return reportError("MvxSockReceive", result);
+//
+//        if (DEBUG)
+//            fprintf(stderr, "Got %zu bytes: %s\n", strlen(recvBuff), recvBuff);
+//    }
+//    if(count == 0){
+//        if((strncmp(recvBuff, "OK   ", 5)==0)) {
+//            count++;
+//            len=1000;
+//            if((result=MvxSockReceive(&comStruct, recvBuff, &len)))
+//                return reportError("MvxSockReceive", result);
+//
+//            if (DEBUG)
+//                fprintf(stderr, "One Line");
+//                fprintf(stderr, "Got %zu bytes: %s\n", strlen(recvBuff), recvBuff);
+//        }
+//
+//    }
+//
+//
+//    if (DEBUG)
+//        fprintf(stderr, "Got %d REP-lines.\n", count);
+//
+//    Py_INCREF(Py_None);
+//    return Py_None;
+//}
+
+static PyObject * pymovex_query_single(PyObject*self, PyObject*args) {
     char recvBuff[1000];
     char *sendBuff;
-    int count;
 
     if (! PyArg_ParseTuple(args, "s", &sendBuff))
-        return NULL;
+        return reportError("PyArg_ParseTuple",0);;
 
     if (DEBUG)
         fprintf(stderr, "Query: |%s|\n", sendBuff);
 
     len=sizeof(recvBuff);
-    count=0;
 
     if((result=MvxSockTrans(&comStruct, sendBuff, recvBuff, &len)))
         return reportError("MvxSockTrans", result);
@@ -99,22 +150,133 @@ static PyObject * pymovex_query(PyObject*self, PyObject*args) {
         fprintf(stderr, "Got %zu bytes: %s\n", strlen(recvBuff), recvBuff);
     }
 
-    while(strncmp(recvBuff, "REP  ", 5)==0) {
-        count++;
-        len=1000;
-        if((result=MvxSockReceive(&comStruct, recvBuff, &len)))
-            return reportError("MvxSockReceive", result);
 
+    PyObject*pyvalue = PyString_FromString(recvBuff);
+    Py_INCREF(recvBuff);
+    return pyvalue;
+}
+
+
+
+// Iterator for query/rawquery
+typedef struct {
+    PyObject_HEAD
+    char* cmd;
+    char* output;
+    int firstResult;
+    int lastResult;
+} pymovex_query_MyIter;
+
+
+PyObject* pymovex_query_MyIter_iter(PyObject *self)
+{
+    Py_INCREF(self);
+    return self;
+}
+
+PyObject* pymovex_query_MyIter_iternext(PyObject *self)
+{
+    char * cmd;
+    char recvBuff[1000];
+    pymovex_query_MyIter *p = (pymovex_query_MyIter *)self;
+    len=sizeof(recvBuff);
+
+    if(p->lastResult){
+         /* Raising of standard StopIteration exception with empty value. */
+        PyErr_SetNone(PyExc_StopIteration);
         if (DEBUG)
-            fprintf(stderr, "Got %zu bytes: %s\n", strlen(recvBuff), recvBuff);
+            fprintf(stderr, "No more results\n");
+        return NULL;
     }
 
-    if (DEBUG)
-        fprintf(stderr, "Got %d REP-lines.\n", count);
+    if (p->firstResult){
+        cmd = p->cmd;
 
-    Py_INCREF(Py_None);
-    return Py_None;
+        if((result=MvxSockTrans(&comStruct, cmd, recvBuff, &len)))
+            return reportError("MvxSockTrans", result);
+
+    }else{
+        if((result=MvxSockReceive(&comStruct, recvBuff, &len)))
+            return reportError("MvxSockReceive", result);
+        cmd = NULL;
+    }
+
+
+    p->firstResult = 0;
+
+    if (DEBUG)
+            fprintf(stderr, "Received: %s \n",recvBuff);
+
+    if (strncmp(recvBuff, "REP  ", 5)!=0 ) {
+        p->lastResult =1;
+    }
+
+    PyObject*pyvalue = PyString_FromString(recvBuff);
+    Py_INCREF(recvBuff);
+    return pyvalue;
 }
+
+
+static PyTypeObject pymovex_query_MyIterType = {
+    PyObject_HEAD_INIT(NULL)
+    0,                         /*ob_size*/
+    "_pymovex._query_MyIter",            /*tp_name*/
+    sizeof(pymovex_query_MyIter),       /*tp_basicsize*/
+    0,                         /*tp_itemsize*/
+    0,                         /*tp_dealloc*/
+    0,                         /*tp_print*/
+    0,                         /*tp_getattr*/
+    0,                         /*tp_setattr*/
+    0,                         /*tp_compare*/
+    0,                         /*tp_repr*/
+    0,                         /*tp_as_number*/
+    0,                         /*tp_as_sequence*/
+    0,                         /*tp_as_mapping*/
+    0,                         /*tp_hash */
+    0,                         /*tp_call*/
+    0,                         /*tp_str*/
+    0,                         /*tp_getattro*/
+    0,                         /*tp_setattro*/
+    0,                         /*tp_as_buffer*/
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_ITER,
+      /* tp_flags: Py_TPFLAGS_HAVE_ITER tells python to
+         use tp_iter and tp_iternext fields. */
+    "Internal myiter iterator object.",           /* tp_doc */
+    0,  /* tp_traverse */
+    0,  /* tp_clear */
+    0,  /* tp_richcompare */
+    0,  /* tp_weaklistoffset */
+    pymovex_query_MyIter_iter,  /* tp_iter: __iter__() method */
+    pymovex_query_MyIter_iternext  /* tp_iternext: next() method */
+};
+
+static PyObject * pymovex_query(PyObject*self, PyObject*args) {
+    char recvBuff[1000];
+    char *sendBuff;
+
+    pymovex_query_MyIter *p;
+
+    if (! PyArg_ParseTuple(args, "s", &sendBuff))
+        return NULL;
+
+    if (DEBUG)
+        fprintf(stderr, "Query: |%s|\n", sendBuff);
+
+    len=sizeof(recvBuff);
+
+    p = PyObject_New(pymovex_query_MyIter, &pymovex_query_MyIterType);
+    if (!p) return NULL;
+
+    p->firstResult = 1;
+    p->lastResult = 0;
+    p->cmd = sendBuff;
+    p->output = recvBuff;
+    Py_INCREF(p);
+    return (PyObject*)p;
+}
+
+
+
 
 typedef struct {
     PyObject_HEAD
@@ -300,7 +462,7 @@ static PyObject * pymovex_fquery_single(PyObject*self, PyObject*args) {
 
     if ((result=MvxSockAccess(&comStruct, cmd))){
         if (DEBUG)
-            fprintf(stderr, "Resultado: %ld\n", result);
+            fprintf(stderr, "Result: %ld\n", result);
 
         return NULL;
 //        return reportError("MvxSockAccess", result);
@@ -329,6 +491,7 @@ static PyMethodDef PyMovexMethods[] = {
     {"connect",  (PyCFunction)pymovex_connect, METH_VARARGS|METH_KEYWORDS, "Connect"},
     {"close",  pymovex_close, METH_VARARGS, "Close"},
     {"query",  pymovex_query, METH_VARARGS, "Query"},
+    {"query_single",  pymovex_query_single, METH_VARARGS, "Query with only one expected result"},
     {"fquery",  pymovex_fquery, METH_VARARGS, "Field-based query"},
     {"fquery_single",  pymovex_fquery_single, METH_VARARGS, "Field-based query with only one expected result"},
     {"debug", pymovex_debug, METH_VARARGS, "Set debug option"},
