@@ -8,7 +8,12 @@ def debug(d):
     _pymovex.debug(d)
 
 def connect(*args, **kwargs):
-    return _pymovex.connect(*args, **kwargs)
+    import os
+    response = os.system("ping -c 1 %s" %(kwargs['host']))
+    if response == 0:
+        return _pymovex.connect(*args, **kwargs)
+    else:
+        return -1
 
 def fquery(cmd, fieldMap, outputFields=()):
     try:
@@ -33,6 +38,8 @@ def query(cmd, args):
         ffargs.append(("%%-%ss" % length) % value)
     fargs = "".join(ffargs)
     query = "%-15s%s" % (cmd, fargs)
+    # WARNING Changed to avoid sending unnecesary whitespaces
+    query = query.strip()
     return _pymovex.query(query)
 
 def query_single(cmd,args):
